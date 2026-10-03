@@ -69,7 +69,8 @@ jobs:
       - name: Replay
         working-directory: mise
         run: |
-          set -uo pipefail
+          # Known test failures under Once must not stop the second pass.
+          set +e -uo pipefail
           commit="$(git rev-parse HEAD)"
           parent="$(git rev-parse HEAD^)"
           echo "### $(git log -1 --format=%s "${commit}")" >> "$GITHUB_STEP_SUMMARY"
@@ -84,8 +85,8 @@ jobs:
             once --color never build cargo_mise_bin_mise > "${RUNNER_TEMP}/${pass}-build.log" 2>&1
             build_seconds=$(( $(date +%s) - start ))
             start=$(date +%s)
-            once --color never test -j 1 > "${RUNNER_TEMP}/${pass}-test.log" 2>&1
-            test_status=$?
+            test_status=0
+            once --color never test -j 1 > "${RUNNER_TEMP}/${pass}-test.log" 2>&1 || test_status=$?
             test_seconds=$(( $(date +%s) - start ))
             mv "${RUNNER_TEMP}/mise.toml" mise.toml
             tail -3 "${RUNNER_TEMP}/${pass}-build.log"
