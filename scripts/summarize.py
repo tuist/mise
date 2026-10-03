@@ -33,7 +33,7 @@ def parse(path):
             statuses[status] += 1
             seconds[status] += duration_seconds(duration)
             actions.append((duration_seconds(duration), name, status))
-        elif re.match(r"^\s+(Done|Failed)\s", line):
+        elif re.match(r"^\s+(Done|Failed)\s", line) or line.startswith("once: ran "):
             trailer = line.strip()
     actions.sort(reverse=True)
     return {
@@ -71,7 +71,8 @@ def main():
         Path(args.json).write_text(json.dumps(record, indent=2))
 
     def counts(section):
-        return ", ".join(f"{v} {k}" for k, v in sorted(section["statuses"].items())) or "n/a"
+        found = ", ".join(f"{v} {k}" for k, v in sorted(section["statuses"].items()))
+        return found or section["trailer"] or "n/a"
 
     print(f"## Once on `{args.os}` for jdx/mise@{args.sha[:10]}\n")
     print(f"Remote cache: **{'on' if record['remote_cache'] else 'off (cold baseline)'}**\n")
