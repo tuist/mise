@@ -1,12 +1,13 @@
 name: sync
 
-# Keeps `main` an exact mirror of jdx/mise. This branch (`once`) is the
+# Every four hours: keep `main` an exact mirror of jdx/mise, then build and
+# test the latest upstream commit with Once. This branch (`once`) is the
 # default branch and only holds the Once experiment, so upstream's own
 # workflows never run in this fork.
 
 on:
   schedule:
-    - cron: "17 * * * *"
+    - cron: "17 */4 * * *"
   workflow_dispatch:
 
 permissions: {}
@@ -23,11 +24,18 @@ jobs:
       contents: write
       actions: write
     outputs:
-      changed: ${{ steps.sync.outputs.changed }}
-      sha: ${{ steps.sync.outputs.sha }}
+      sha: ${{ steps.upstream.outputs.sha }}
     steps:
+      - name: Resolve the latest jdx/mise commit
+        id: upstream
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: echo "sha=$(gh api repos/jdx/mise/branches/main -q .commit.sha)" >> "$GITHUB_OUTPUT"
+      # GITHUB_TOKEN cannot fast-forward over upstream workflow file changes,
+      # so this needs SYNC_TOKEN (Contents and Workflows write). A failed sync
+      # does not block the build below, which checks out jdx/mise directly.
       - name: Fast-forward main from jdx/mise
-        id: sync
+        continue-on-error: true
         env:
           GH_TOKEN: ${{ secrets.SYNC_TOKEN || github.token }}
         run: |
@@ -35,14 +43,7 @@ jobs:
           before="$(gh api repos/${{ github.repository }}/branches/main -q .commit.sha)"
           gh api -X POST repos/${{ github.repository }}/merge-upstream -f branch=main
           after="$(gh api repos/${{ github.repository }}/branches/main -q .commit.sha)"
-          echo "sha=${after}" >> "$GITHUB_OUTPUT"
-          if [ "${before}" != "${after}" ]; then
-            echo "changed=true" >> "$GITHUB_OUTPUT"
-            echo "main: ${before} -> ${after}"
-          else
-            echo "changed=false" >> "$GITHUB_OUTPUT"
-            echo "main is up to date at ${after}"
-          fi
+          echo "main: ${before} -> ${after}"
       # Upstream workflows that reach this fork through main stay disabled.
       - name: Disable upstream workflows
         env:
@@ -50,7 +51,7 @@ jobs:
         run: |
           set -euo pipefail
           gh api --paginate repos/${{ github.repository }}/actions/workflows \
-            -q '.workflows[] | select(.state == "active") | select(.path | test("^\\.github/workflows/(sync|once)\\.yml$") | not) | "\(.id)\t\(.path)"' |
+            -q '.workflows[] | select(.state == "active") | select(.path | test("^\\.github/workflows/(sync|once|replay)\\.yml$") | not) | "\(.id)\t\(.path)"' |
             while IFS=$'\t' read -r id path; do
               echo "Disabling ${path}"
               gh api -X PUT "repos/${{ github.repository }}/actions/workflows/${id}/disable" || true
@@ -58,7 +59,6 @@ jobs:
 
   once:
     needs: sync
-    if: needs.sync.outputs.changed == 'true'
     permissions:
       contents: read
       id-token: write

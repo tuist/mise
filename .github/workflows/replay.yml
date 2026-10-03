@@ -1,0 +1,105 @@
+name: replay
+
+# Measures what a jdx/mise change (typically a Renovate bump) invalidates.
+# Builds and tests the parent commit, then the change, in the same workspace
+# with only Once's local cache. The second pass shows what a PR costs when
+# its base is already cached, without the shared Tuist cache having seen
+# newer commits that already contain the change.
+
+on:
+  workflow_dispatch:
+    inputs:
+      commit:
+        description: jdx/mise commit to replay (its first parent is the baseline)
+        type: string
+        required: true
+
+permissions: {}
+
+env:
+  ONCE_VERSION: 0.62.2
+  CARGO_TERM_COLOR: never
+  CARGO_NET_RETRY: "10"
+
+jobs:
+  replay:
+    name: replay (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 180
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-14]
+    steps:
+      - name: Check out jdx/mise
+        uses: actions/checkout@v6
+        with:
+          repository: jdx/mise
+          ref: ${{ inputs.commit }}
+          fetch-depth: 2
+          path: mise
+          persist-credentials: false
+      - name: Check out the Once overlay
+        uses: actions/checkout@v6
+        with:
+          path: overlay
+          sparse-checkout: scripts
+          persist-credentials: false
+      - name: Install Once
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          case "${RUNNER_OS}-${RUNNER_ARCH}" in
+            Linux-X64) triple=x86_64-unknown-linux-gnu ;;
+            Linux-ARM64) triple=aarch64-unknown-linux-gnu ;;
+            macOS-ARM64) triple=aarch64-apple-darwin ;;
+            macOS-X64) triple=x86_64-apple-darwin ;;
+          esac
+          mkdir -p "${RUNNER_TEMP}/once"
+          gh release download "${ONCE_VERSION}" -R tuist/once \
+            -p "once-${ONCE_VERSION}-${triple}.tar.gz" -O - | tar xz -C "${RUNNER_TEMP}/once"
+          echo "${RUNNER_TEMP}/once" >> "$GITHUB_PATH"
+      - name: Select the Rust toolchain
+        run: |
+          rustup toolchain install stable --profile minimal
+          rustup default stable
+      - name: Replay
+        working-directory: mise
+        run: |
+          set -uo pipefail
+          commit="$(git rev-parse HEAD)"
+          parent="$(git rev-parse HEAD^)"
+          echo "### $(git log -1 --format=%s "${commit}")" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          git diff --stat "${parent}" "${commit}" | tail -1 | sed 's/^/Diff: /' >> "$GITHUB_STEP_SUMMARY"
+          for pass in parent commit; do
+            sha="${parent}"; [ "${pass}" = commit ] && sha="${commit}"
+            git checkout -q -f "${sha}"
+            # See once.yml: build without the repository mise.toml.
+            mv mise.toml "${RUNNER_TEMP}/mise.toml"
+            start=$(date +%s)
+            once --color never build cargo_mise_bin_mise > "${RUNNER_TEMP}/${pass}-build.log" 2>&1
+            build_seconds=$(( $(date +%s) - start ))
+            start=$(date +%s)
+            once --color never test -j 1 > "${RUNNER_TEMP}/${pass}-test.log" 2>&1
+            test_status=$?
+            test_seconds=$(( $(date +%s) - start ))
+            mv "${RUNNER_TEMP}/mise.toml" mise.toml
+            tail -3 "${RUNNER_TEMP}/${pass}-build.log"
+            python3 ../overlay/scripts/summarize.py \
+              --os "${{ matrix.os }} (${pass})" --sha "${sha}" --remote-cache false \
+              --build-seconds "${build_seconds}" --test-seconds "${test_seconds}" \
+              --test-status "${test_status}" \
+              --build-log "${RUNNER_TEMP}/${pass}-build.log" --test-log "${RUNNER_TEMP}/${pass}-test.log" \
+              --json "${RUNNER_TEMP}/${pass}-summary.json" >> "$GITHUB_STEP_SUMMARY"
+          done
+      - name: Upload logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: replay-${{ matrix.os }}
+          path: ${{ runner.temp }}/*.*
+          if-no-files-found: ignore
