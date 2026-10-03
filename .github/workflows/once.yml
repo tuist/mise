@@ -121,7 +121,9 @@ jobs:
           set -o pipefail
           start=$(date +%s)
           status=0
-          once --color never test 2>&1 | tee "${RUNNER_TEMP}/test.log" || status=$?
+          # jdx/mise runs its tests fully serially (nextest test-threads = 1,
+          # RUST_TEST_THREADS=1): test binaries share fixtures under test/.
+          once --color never test -j 1 2>&1 | tee "${RUNNER_TEMP}/test.log" || status=$?
           echo "TEST_SECONDS=$(( $(date +%s) - start ))" >> "$GITHUB_ENV"
           echo "TEST_STATUS=${status}" >> "$GITHUB_ENV"
       - name: Summarize
