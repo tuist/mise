@@ -1,0 +1,11 @@
+# Copied into the jdx/mise checkout by .github/workflows/once.yml.
+# Once derives the build graph from mise's Cargo.toml; this file only
+# points the shared cache and run reporting at the tuist/mise project.
+
+[infrastructure.cache]
+provider = "tuist"
+
+[infrastructures.tuist]
+kind = "tuist"
+account = "tuist"
+project = "mise"
