@@ -27,7 +27,7 @@ on:
 permissions: {}
 
 env:
-  ONCE_VERSION: 0.62.2
+  ONCE_VERSION: 0.63.0
   CARGO_TERM_COLOR: never
   CARGO_NET_RETRY: "10"
 
@@ -113,7 +113,7 @@ jobs:
         run: |
           set -o pipefail
           start=$(date +%s)
-          once --color never build cargo_mise_bin_mise 2>&1 | tee "${RUNNER_TEMP}/build.log"
+          once build cargo_mise_bin_mise 2>&1 | tee "${RUNNER_TEMP}/build.log"
           echo "BUILD_SECONDS=$(( $(date +%s) - start ))" >> "$GITHUB_ENV"
       - name: once test
         working-directory: mise
@@ -123,7 +123,7 @@ jobs:
           status=0
           # jdx/mise runs its tests fully serially (nextest test-threads = 1,
           # RUST_TEST_THREADS=1): test binaries share fixtures under test/.
-          once --color never test -j 1 2>&1 | tee "${RUNNER_TEMP}/test.log" || status=$?
+          once test -j 1 2>&1 | tee "${RUNNER_TEMP}/test.log" || status=$?
           echo "TEST_SECONDS=$(( $(date +%s) - start ))" >> "$GITHUB_ENV"
           echo "TEST_STATUS=${status}" >> "$GITHUB_ENV"
       - name: Summarize

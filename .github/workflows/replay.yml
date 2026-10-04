@@ -17,7 +17,7 @@ on:
 permissions: {}
 
 env:
-  ONCE_VERSION: 0.62.2
+  ONCE_VERSION: 0.63.0
   CARGO_TERM_COLOR: never
   CARGO_NET_RETRY: "10"
 
@@ -82,11 +82,11 @@ jobs:
             # See once.yml: build without the repository mise.toml.
             mv mise.toml "${RUNNER_TEMP}/mise.toml"
             start=$(date +%s)
-            once --color never build cargo_mise_bin_mise > "${RUNNER_TEMP}/${pass}-build.log" 2>&1
+            once build cargo_mise_bin_mise > "${RUNNER_TEMP}/${pass}-build.log" 2>&1
             build_seconds=$(( $(date +%s) - start ))
             start=$(date +%s)
             test_status=0
-            once --color never test -j 1 > "${RUNNER_TEMP}/${pass}-test.log" 2>&1 || test_status=$?
+            once test -j 1 > "${RUNNER_TEMP}/${pass}-test.log" 2>&1 || test_status=$?
             test_seconds=$(( $(date +%s) - start ))
             mv "${RUNNER_TEMP}/mise.toml" mise.toml
             tail -3 "${RUNNER_TEMP}/${pass}-build.log"
