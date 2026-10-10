@@ -17,7 +17,7 @@ on:
 permissions: {}
 
 env:
-  ONCE_VERSION: 0.65.1
+  ONCE_VERSION: 0.66.0
   CARGO_TERM_COLOR: never
   CARGO_NET_RETRY: "10"
 
